@@ -1,0 +1,67 @@
+name: Traducir datos al español
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"   # cada 6 horas
+  workflow_dispatch: {}      # y a mano desde la pestaña Actions
+  push:                      # al subir una caché traducida en local, se publica al momento
+    branches: [main]
+    paths:
+      - "tools/translate/**"
+      - ".github/workflows/traducir-datos.yml"
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: traducir-datos
+  cancel-in-progress: false
+
+jobs:
+  traducir:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Guardar en caché el modelo de traducción
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/argos-translate
+          key: argos-en-es-v1
+
+      - name: Instalar Argos Translate (traductor libre, sin API)
+        run: pip install argostranslate
+
+      - name: Descargar y traducir
+        # Si se acerca al límite, se detiene a tiempo y guarda lo traducido; la próxima ejecución sigue.
+        timeout-minutes: 300
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: python tools/translate/build_es.py
+
+      - name: Guardar caché de traducciones
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tools/translate/cache.json
+          git diff --cached --quiet || git commit -m "Actualizar caché de traducciones"
+          git pull --rebase origin main
+          git push
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - id: deploy
+        uses: actions/deploy-pages@v4
