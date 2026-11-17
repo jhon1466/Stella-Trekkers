@@ -500,7 +500,8 @@ class StellaGatewayClient {
     // Field 12: Language = "en"
     // Field 13: Channel = "Official"
     // Field 14: Device = "android"
-    // Field 15: Version = "2.0.0.145"
+    // Field 15 is the installed client build version (the resource GAME_VER
+    // can advance independently through hot updates).
     final loginBuilder = BytesBuilder();
     loginBuilder.addByte(0x1a);
     loginBuilder.add(_encodeVarint(overBytes.length));
@@ -524,7 +525,7 @@ class StellaGatewayClient {
     loginBuilder.add(_encodeVarint(devBytes.length));
     loginBuilder.add(devBytes);
 
-    final verBytes = utf8.encode('2.0.0.145');
+    final verBytes = utf8.encode('2.1.0.149');
     loginBuilder.addByte(0x7a);
     loginBuilder.add(_encodeVarint(verBytes.length));
     loginBuilder.add(verBytes);
@@ -578,20 +579,64 @@ class StellaGatewayClient {
     } else {
       // Login failed (msgId 6 or 10000)
       int code = 0;
-      if (payload.isNotEmpty && payload[0] == 0x08) {
-        int shift = 0;
-        int idx = 1;
-        while (idx < payload.length) {
-          final b = payload[idx++];
-          code |= (b & 0x7f) << shift;
-          if ((b & 0x80) == 0) break;
+      String? serverMessage;
+      var offset = 0;
+      int readVarint() {
+        var value = 0;
+        var shift = 0;
+        while (offset < payload.length && shift < 64) {
+          final byte = payload[offset++];
+          value |= (byte & 0x7f) << shift;
+          if ((byte & 0x80) == 0) return value;
           shift += 7;
         }
+        return value;
       }
+
+      while (offset < payload.length) {
+        final tag = readVarint();
+        final field = tag >> 3;
+        final wireType = tag & 0x07;
+        if (wireType == 0) {
+          final value = readVarint();
+          if (field == 1) code = value;
+        } else if (wireType == 2) {
+          final length = readVarint();
+          if (length < 0 || offset + length > payload.length) break;
+          if (field == 2) {
+            serverMessage = utf8.decode(
+              payload.sublist(offset, offset + length),
+              allowMalformed: true,
+            );
+          }
+          offset += length;
+        } else if (wireType == 1) {
+          offset += 8;
+        } else if (wireType == 5) {
+          offset += 4;
+        } else {
+          break;
+        }
+      }
+      // 100101: token expirado, 100110: relogin/sesión caducada, 110106: token caducado
+      // 100109: ErrInvalidVersion
+      // 100111: ErrorCode.100111.1 (Login failed. Please update and try again / versión del cliente obsoleta)
       if (code == 100101 || code == 100110 || code == 110106) {
-        throw const SessionExpiredException();
+        throw SessionExpiredException(code, serverMessage);
+      } else if (code == 100111) {
+        throw Exception(
+          'Versión de juego obsoleta (Código 100111: Se requiere actualizar el cliente). '
+          'El servidor requiere una versión de cliente más reciente.',
+        );
+      } else if (code == 100109) {
+        throw Exception(
+          'Versión de cliente no admitida por el servidor (Código 100109: ErrInvalidVersion).',
+        );
       } else {
-        throw Exception('Inicio de sesión en el servidor de juego rechazado (Código $code).');
+        final detail = serverMessage == null || serverMessage.isEmpty
+            ? ''
+            : ' — $serverMessage';
+        throw Exception('Inicio de sesión en el servidor de juego rechazado (Código $code)$detail.');
       }
     }
   }
@@ -843,10 +888,20 @@ class StellaGatewayClient {
   static Future<OfficialGameStats> syncOfficialAccount(YostarAccount account) async {
     try {
       return await _syncOnce(account);
-    } on SessionExpiredException {
+    } on SessionExpiredException catch (firstError) {
       // El token de juego caduca rápido: se pide uno nuevo con la cuenta Yostar y se reintenta.
       final renewed = await YostarAuthService.refreshSession(account);
-      return _syncOnce(renewed);
+      try {
+        return await _syncOnce(renewed);
+      } on SessionExpiredException catch (retryError) {
+        final detail = retryError.serverMessage?.isNotEmpty == true
+            ? ' (${retryError.serverMessage})'
+            : '';
+        throw Exception(
+          'El servidor rechazó el token de juego incluso después de renovar la sesión '
+          '(códigos ${firstError.code} y ${retryError.code}$detail).',
+        );
+      }
     }
   }
 
@@ -928,32 +983,34 @@ class StellaGatewayClient {
     );
 
     // Persist real stats
-    final prefs = await SharedPreferences.getInstance();
-    final nowEpoch = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final nowEpoch = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
-    await prefs.setInt('official_current_energy', realEnergy);
-    await prefs.setInt('official_sync_epoch', nowEpoch);
-    await prefs.setInt('official_player_level', stats.level);
-    await prefs.setInt('official_player_exp', stats.exp);
-    await prefs.setInt('official_char_count', stats.characterCount);
-    await prefs.setInt('official_disc_count', stats.discCount);
-    await prefs.setString('official_stats', jsonEncode(stats.toJson()));
+      await prefs.setInt('official_current_energy', realEnergy);
+      await prefs.setInt('official_sync_epoch', nowEpoch);
+      await prefs.setInt('official_player_level', stats.level);
+      await prefs.setInt('official_player_exp', stats.exp);
+      await prefs.setInt('official_char_count', stats.characterCount);
+      await prefs.setInt('official_disc_count', stats.discCount);
+      await prefs.setString('official_stats', jsonEncode(stats.toJson()));
 
-    // Common keys for widgets and general UI
-    await prefs.setInt('account_energy', realEnergy);
-    await prefs.setInt('account_energy_max', maxEnergy);
-    await prefs.setInt('account_energy_full_minutes', secondsToFull ~/ 60);
-    await prefs.setString('account_energy_source', 'Servidor Oficial Stella Sora');
+      // Common keys for widgets and general UI
+      await prefs.setInt('account_energy', realEnergy);
+      await prefs.setInt('account_energy_max', maxEnergy);
+      await prefs.setInt('account_energy_full_minutes', secondsToFull ~/ 60);
+      await prefs.setString('account_energy_source', 'Servidor Oficial Stella Sora');
 
-    // Update stored YostarAccount if nickname or in-game UID is updated
-    if ((pData.nickname.isNotEmpty && pData.nickname != account.nickname) ||
-        (resolvedUid.isNotEmpty && resolvedUid != account.uid)) {
-      final updatedAccount = account.copyWith(
-        uid: resolvedUid.isNotEmpty ? resolvedUid : account.uid,
-        nickname: pData.nickname.isNotEmpty ? pData.nickname : account.nickname,
-      );
-      await prefs.setString('official_yostar_account', jsonEncode(updatedAccount.toJson()));
-    }
+      // Update stored YostarAccount if nickname or in-game UID is updated
+      if ((pData.nickname.isNotEmpty && pData.nickname != account.nickname) ||
+          (resolvedUid.isNotEmpty && resolvedUid != account.uid)) {
+        final updatedAccount = account.copyWith(
+          uid: resolvedUid.isNotEmpty ? resolvedUid : account.uid,
+          nickname: pData.nickname.isNotEmpty ? pData.nickname : account.nickname,
+        );
+        await prefs.setString('official_yostar_account', jsonEncode(updatedAccount.toJson()));
+      }
+    } catch (_) {}
 
     // Update Android native home-screen widget
     try {
@@ -981,32 +1038,34 @@ class StellaGatewayClient {
 
   /// Retrieves cached stats from local storage.
   static Future<OfficialGameStats?> getCachedStats() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString('official_stats');
-    if (raw != null && raw.isNotEmpty) {
-      try {
-        return OfficialGameStats.fromJson(jsonDecode(raw) as Map<String, dynamic>);
-      } catch (_) {}
-    }
-    final acc = prefs.getString('official_yostar_account');
-    if (acc != null) {
-      return OfficialGameStats(
-        currentEnergy: prefs.getInt('official_current_energy') ?? 400,
-        maxEnergy: 240,
-        secondsToFull: 0,
-        level: 25,
-        exp: 3850,
-        nickname: 'etesech',
-        uid: '700494272',
-        title: 'Calma Steward',
-        signature: 'eso tiln',
-        avatar: '/stella/assets/head_11001_XL.png',
-        badge: 'Crackling Hint of Spring',
-        characterCount: 6,
-        discCount: 12,
-        syncTime: DateTime.now(),
-      );
-    }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('official_stats');
+      if (raw != null && raw.isNotEmpty) {
+        try {
+          return OfficialGameStats.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+        } catch (_) {}
+      }
+      final acc = prefs.getString('official_yostar_account');
+      if (acc != null) {
+        return OfficialGameStats(
+          currentEnergy: prefs.getInt('official_current_energy') ?? 400,
+          maxEnergy: 240,
+          secondsToFull: 0,
+          level: 25,
+          exp: 3850,
+          nickname: 'etesech',
+          uid: '700494272',
+          title: 'Calma Steward',
+          signature: 'eso tiln',
+          avatar: '/stella/assets/head_11001_XL.png',
+          badge: 'Crackling Hint of Spring',
+          characterCount: 6,
+          discCount: 12,
+          syncTime: DateTime.now(),
+        );
+      }
+    } catch (_) {}
     return null;
   }
 }
@@ -1014,8 +1073,13 @@ class StellaGatewayClient {
 
 /// El servidor de juego rechazó el token por caducado.
 class SessionExpiredException implements Exception {
-  const SessionExpiredException();
+  const SessionExpiredException(this.code, [this.serverMessage]);
+
+  final int code;
+  final String? serverMessage;
 
   @override
-  String toString() => 'El token de sesión del juego ha caducado.';
+  String toString() => serverMessage != null && serverMessage!.isNotEmpty
+      ? 'El token de sesión del juego ha caducado: $serverMessage (Código $code).'
+      : 'El token de sesión del juego ha caducado (Código $code).';
 }

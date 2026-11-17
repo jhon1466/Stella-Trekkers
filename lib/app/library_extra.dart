@@ -1,8 +1,7 @@
 part of '../main.dart';
 
 // ─────────────────────────────────────────────────────────────
-// BIBLIOTECA EXTRA: Enemigos, Monolito, Emblemas,
-// Builds de la comunidad y Registro de cambios
+// BIBLIOTECA EXTRA: Enemigos, Monolito, Emblemas y Builds de la comunidad
 // ─────────────────────────────────────────────────────────────
 
 /// Campo de búsqueda con el borde grueso de la web.
@@ -188,7 +187,6 @@ class _EnemiesPageState extends State<EnemiesPage> {
     ]);
   }
 }
-
 Widget _communityPotential(BuildContext context, Map<String, dynamic> choice, Map<String, dynamic> definitions) {
   final ref = _string(choice['ref']);
   final split = ref.split(':');
@@ -716,55 +714,4 @@ class _CommunityBuildsPageState extends State<CommunityBuildsPage> {
       ),
     ]);
   }
-}
-
-// ─────────────────────────────────────────────────────────────
-// REGISTRO DE CAMBIOS (versiones de datos)
-// ─────────────────────────────────────────────────────────────
-
-class ChangelogPage extends StatelessWidget {
-  const ChangelogPage({super.key});
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: _subAppBar('Changelog'),
-    body: _Loader<dynamic>(
-      load: (r) => Api.site('changelog', refresh: r),
-      builder: (context, data, refresh) {
-        final versions = _asList(_asMap(data)['versions']).map(_asMap).toList();
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 24),
-          children: [
-            const Text('Cada entrada es una actualización de los datos del juego que usa la base de datos.',
-                style: TextStyle(fontSize: 12.5, height: 1.45, color: kTextMuted)),
-            const SizedBox(height: 12),
-            for (final (i, v) in versions.indexed)
-              Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: i == 0 ? kPaper : kPanelBg,
-                  border: Border.all(color: i == 0 ? kPaper : kBorderColor, width: 2),
-                ),
-                child: Row(children: [
-                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(_shortDate(_parseDate(v['date'])), style: kDisplay(18, color: i == 0 ? kInk : kTextPrimary)),
-                    Text(_string(v['short']).toUpperCase(),
-                        style: TextStyle(
-                            fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.2, color: i == 0 ? kInk : kTextMuted)),
-                  ]),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                        _string(v['label']).isEmpty ? 'Actualización de datos del juego' : _string(v['label']),
-                        style: TextStyle(fontSize: 12.5, color: i == 0 ? kInk : kTextPrimary)),
-                  ),
-                  if (i == 0) const _Tag('Última', color: kInk, filled: true),
-                ]),
-              ),
-          ],
-        );
-      },
-    ),
-  );
 }

@@ -52,7 +52,11 @@ class _AccountPageState extends State<AccountPage> with WidgetsBindingObserver {
   }
 
   Future<void> _load() async {
-    final prefs = await SharedPreferences.getInstance();
+    SharedPreferences? prefs;
+    try {
+      prefs = await SharedPreferences.getInstance();
+    } catch (_) {}
+
     final storedAccount = await YostarAuthService.getStoredAccount();
     final cachedStats = await StellaGatewayClient.getCachedStats();
 
@@ -60,11 +64,11 @@ class _AccountPageState extends State<AccountPage> with WidgetsBindingObserver {
     setState(() {
       account = storedAccount;
       officialStats = cachedStats;
-      energy = prefs.getInt('account_energy') ?? cachedStats?.currentEnergy ?? 400;
-      maximum = prefs.getInt('account_energy_max') ?? cachedStats?.maxEnergy ?? 240;
-      fullMinutes = prefs.getInt('account_energy_full_minutes') ?? (cachedStats != null ? cachedStats.secondsToFull ~/ 60 : 0);
-      widgetBgPath = prefs.getString('widget_character_path');
-      widgetCharName = prefs.getString('widget_character_name');
+      energy = prefs?.getInt('account_energy') ?? cachedStats?.currentEnergy ?? 400;
+      maximum = prefs?.getInt('account_energy_max') ?? cachedStats?.maxEnergy ?? 240;
+      fullMinutes = prefs?.getInt('account_energy_full_minutes') ?? (cachedStats != null ? cachedStats.secondsToFull ~/ 60 : 0);
+      widgetBgPath = prefs?.getString('widget_character_path');
+      widgetCharName = prefs?.getString('widget_character_name');
       loading = false;
     });
 
@@ -229,10 +233,12 @@ class _AccountPageState extends State<AccountPage> with WidgetsBindingObserver {
   }
 
   Future<void> _clearWidgetCharacter() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('widget_character_path');
-    await prefs.remove('widget_character_name');
-    await prefs.remove('widget_character_id');
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('widget_character_path');
+      await prefs.remove('widget_character_name');
+      await prefs.remove('widget_character_id');
+    } catch (_) {}
 
     try {
       await const MethodChannel('stella/account_widget').invokeMethod('updateWidgetBackground', {
@@ -1264,10 +1270,12 @@ class _CharacterWidgetPickerSheetState extends State<_CharacterWidgetPickerSheet
       final targetFile = File('${dir.path}/widget_bg_$charId.png');
       await targetFile.writeAsBytes(response.bodyBytes);
 
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('widget_character_path', targetFile.path);
-      await prefs.setString('widget_character_name', charName);
-      if (charId is int) await prefs.setInt('widget_character_id', charId);
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('widget_character_path', targetFile.path);
+        await prefs.setString('widget_character_name', charName);
+        if (charId is int) await prefs.setInt('widget_character_id', charId);
+      } catch (_) {}
 
       try {
         await const MethodChannel('stella/account_widget').invokeMethod('updateWidgetBackground', {

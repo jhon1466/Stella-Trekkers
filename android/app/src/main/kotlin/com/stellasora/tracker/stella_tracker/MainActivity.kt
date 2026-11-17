@@ -217,6 +217,7 @@ class EnergyWidget : android.appwidget.AppWidgetProvider() {
                 loader.startInitialization(context)
                 loader.ensureInitializationComplete(context, null)
                 val e = FlutterEngine(context)
+                io.flutter.plugins.GeneratedPluginRegistrant.registerWith(e)
                 engine = e
                 MethodChannel(e.dartExecutor.binaryMessenger, "stella/account_widget").setMethodCallHandler { call, result ->
                     if (call.method == "updateEnergy") {

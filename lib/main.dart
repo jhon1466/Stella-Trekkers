@@ -63,7 +63,10 @@ const kSkillOrange = Color(0xffec6d21);
 TextStyle kDisplay(double size, {Color color = kTextPrimary}) =>
     TextStyle(fontFamily: 'Anton', fontSize: size, height: 1.05, letterSpacing: 0.2, color: color);
 
-void main() => runApp(const StellaCompanion());
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const StellaCompanion());
+}
 
 /// Punto de entrada sin interfaz que lanza el botón de recarga del widget:
 /// sincroniza la energía con el servidor oficial sin abrir la app.
@@ -375,11 +378,6 @@ class _CompanionShellState extends State<CompanionShell> {
             _drawerItem('Ranking de Blitz', Icons.emoji_events_outlined,
                 () => _push(const RankingListPage(kind: RankingKind.scoreBoss))),
             _drawerItem('Jefe mundial', Icons.public_outlined, () => _push(const WorldBossPage())),
-            _divider(),
-            _drawerCategory('SITIO'),
-            _drawerItem('Registro de cambios', Icons.history_outlined, () => _push(const ChangelogPage())),
-            _drawerItem('Comentarios', Icons.feedback_outlined, () => launchUrl(
-              Uri.parse('https://stella.ennead.cc/feedback'), mode: LaunchMode.externalApplication)),
             const SizedBox(height: 24),
           ],
         ),

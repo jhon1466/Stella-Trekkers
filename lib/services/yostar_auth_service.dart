@@ -71,19 +71,25 @@ class YostarAuthService {
 
   /// Identificador de dispositivo estable por instalación (los tokens van ligados a él).
   static Future<void> _loadDeviceId() async {
-    final prefs = await SharedPreferences.getInstance();
-    var id = prefs.getString('yostar_device_id');
-    if (id == null || id.isEmpty) {
-      // Las cuentas vinculadas antes de este cambio usaron el id fijo: se conserva.
-      if (prefs.getString('official_yostar_account') != null) {
-        id = _deviceId;
-      } else {
-        final r = Random.secure();
-        id = List.generate(16, (_) => r.nextInt(16).toRadixString(16)).join();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      var id = prefs.getString('yostar_device_id');
+      if (id == null || id.isEmpty) {
+        // Las cuentas vinculadas antes de este cambio usaron el id fijo: se conserva.
+        if (prefs.getString('official_yostar_account') != null) {
+          id = _deviceId;
+        } else {
+          final r = Random.secure();
+          id = List.generate(16, (_) => r.nextInt(16).toRadixString(16)).join();
+        }
+        await prefs.setString('yostar_device_id', id);
       }
-      await prefs.setString('yostar_device_id', id);
+      _deviceId = id;
+    } catch (_) {
+      if (_deviceId.isEmpty) {
+        _deviceId = 'abcdef0123456789';
+      }
     }
-    _deviceId = id;
   }
 
   static Map<String, dynamic> _makeHead({String uid = '', String token = ''}) {
@@ -269,7 +275,11 @@ class YostarAuthService {
     final userInfo = (dataObj['UserInfo'] as Map<String, dynamic>?) ?? {};
     final yostarObj = (dataObj['Yostar'] as Map<String, dynamic>?) ?? {};
 
-    final gameUid = userInfo['ID']?.toString() ?? yostarUid;
+    // Obtiene el identificador del jugador (UID o ID numérico del juego) devuelto por Yostar
+    final rawUid = userInfo['UID'] ?? userInfo['ID'];
+    final gameUid = (rawUid != null && rawUid.toString() != '0' && rawUid.toString().isNotEmpty)
+        ? rawUid.toString()
+        : yostarUid;
     final gameToken = userInfo['Token']?.toString() ?? '';
     final nickname = yostarObj['Nickname']?.toString() ?? cleanEmail.split('@').first;
     final picture = yostarObj['Picture']?.toString() ?? '';
@@ -292,16 +302,18 @@ class YostarAuthService {
 
   /// Persists account info in SharedPreferences.
   static Future<void> saveAccount(YostarAccount account) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('official_yostar_account', jsonEncode(account.toJson()));
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('official_yostar_account', jsonEncode(account.toJson()));
+    } catch (_) {}
   }
 
   /// Retrieves the saved account if present.
   static Future<YostarAccount?> getStoredAccount() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString('official_yostar_account');
-    if (raw == null || raw.isEmpty) return null;
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('official_yostar_account');
+      if (raw == null || raw.isEmpty) return null;
       final json = jsonDecode(raw) as Map<String, dynamic>;
       return YostarAccount.fromJson(json);
     } catch (_) {
@@ -311,18 +323,20 @@ class YostarAuthService {
 
   /// Clears stored account credentials and official stats.
   static Future<void> logout() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('official_yostar_account');
-    await prefs.remove('official_player_level');
-    await prefs.remove('official_player_exp');
-    await prefs.remove('official_player_name');
-    await prefs.remove('official_sync_timestamp');
-    // Datos del widget y del fondo elegido
-    for (final k in ['widget_character_path', 'widget_character_name', 'widget_character_id',
-        'official_current_energy', 'official_sync_epoch', 'official_char_count', 'official_disc_count',
-        'official_stats', 'account_energy', 'account_energy_max', 'account_energy_full_minutes', 'account_energy_source']) {
-      await prefs.remove(k);
-    }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('official_yostar_account');
+      await prefs.remove('official_player_level');
+      await prefs.remove('official_player_exp');
+      await prefs.remove('official_player_name');
+      await prefs.remove('official_sync_timestamp');
+      // Datos del widget y del fondo elegido
+      for (final k in ['widget_character_path', 'widget_character_name', 'widget_character_id',
+          'official_current_energy', 'official_sync_epoch', 'official_char_count', 'official_disc_count',
+          'official_stats', 'account_energy', 'account_energy_max', 'account_energy_full_minutes', 'account_energy_source']) {
+        await prefs.remove(k);
+      }
+    } catch (_) {}
   }
 }
 
