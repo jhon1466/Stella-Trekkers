@@ -189,7 +189,7 @@ class _EnemiesPageState extends State<EnemiesPage> {
   }
 }
 
-Widget _communityPotential(Map<String, dynamic> choice, Map<String, dynamic> definitions) {
+Widget _communityPotential(BuildContext context, Map<String, dynamic> choice, Map<String, dynamic> definitions) {
   final ref = _string(choice['ref']);
   final split = ref.split(':');
   final category = split.isNotEmpty ? split.first : '';
@@ -199,11 +199,29 @@ Widget _communityPotential(Map<String, dynamic> choice, Map<String, dynamic> def
   final level = int.tryParse(_string(choice['level'])) ?? 1;
   final desc = _cleanGameText(_string(p['description']), params: _paramsAtLevel(_asList(p['params']), level));
   final priority = _string(choice['priority'], 'medium');
-  return Container(
-    margin: const EdgeInsets.only(bottom: 5),
-    padding: const EdgeInsets.all(7),
-    color: kSurface,
-    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+  return InkWell(
+    onTap: p.isEmpty ? null : () => _showSheet(context, title: _string(p['name'], ref), children: [
+      Center(child: _PotentialPlate(p, size: 104)),
+      const SizedBox(height: 12),
+      Wrap(spacing: 6, runSpacing: 6, children: [
+        _Tag(_potentialGroupLabel(category)),
+        _Tag('NV. $level'),
+        _Tag(_potentialPriorityLabel(priority)),
+      ]),
+      const SizedBox(height: 14),
+      Text(desc.isEmpty ? 'Sin descripción disponible.' : desc,
+          style: const TextStyle(fontSize: 13, height: 1.5, color: kTextPrimary)),
+      if (_string(p['shortDescription']).isNotEmpty && _string(p['shortDescription']) != _string(p['description'])) ...[
+        const SizedBox(height: 12),
+        Text(_cleanGameText(_string(p['shortDescription']), params: _paramsAtLevel(_asList(p['params']), level)),
+            style: const TextStyle(fontSize: 12, height: 1.4, color: kTextMuted)),
+      ],
+    ]),
+    child: Container(
+      margin: const EdgeInsets.only(bottom: 5),
+      padding: const EdgeInsets.all(7),
+      color: kSurface,
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
       if (_string(p['icon']).isNotEmpty) ...[
         _PotentialPlate(p, size: 42),
         const SizedBox(width: 8),
@@ -218,9 +236,25 @@ Widget _communityPotential(Map<String, dynamic> choice, Map<String, dynamic> def
         const SizedBox(height: 3),
         Text('NV. $level', style: const TextStyle(fontSize: 9, color: kTextMuted)),
       ]),
-    ]),
+      ]),
+    ),
   );
 }
+
+String _potentialGroupLabel(String category) => switch (category) {
+  'mainCore' => 'CORE PRINCIPAL',
+  'mainNormal' => 'POTENCIAL PRINCIPAL',
+  'supportCore' => 'CORE DE APOYO',
+  'supportNormal' => 'POTENCIAL DE APOYO',
+  'common' => 'COMÚN',
+  _ => 'POTENCIAL',
+};
+
+String _potentialPriorityLabel(String priority) => switch (priority) {
+  'core' => 'CLAVE',
+  'optional' => 'OPCIONAL',
+  _ => 'MEDIA',
+};
 
 // ─────────────────────────────────────────────────────────────
 // MONOLITO (respuestas de los diálogos)
@@ -437,7 +471,7 @@ class CommunityBuildsPage extends StatefulWidget {
 
 class _CommunityBuildsPageState extends State<CommunityBuildsPage> {
   String query = '';
-  int sort = 0; // 0 recientes, 1 mejor valoradas, 2 más vistas
+  int sort = 0; // Nuevas, trending, populares, más vistas, mejor valoradas.
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -453,10 +487,32 @@ class _CommunityBuildsPageState extends State<CommunityBuildsPage> {
           if (_string(b['name']).toLowerCase().contains(q)) return true;
           return _asList(b['trekkerIds']).any((id) => _string(chars['$id']?['name']).toLowerCase().contains(q));
         }).toList();
-        if (sort == 1) {
-          list.sort((a, b) => ((b['ratingScore'] as num?) ?? 0).compareTo((a['ratingScore'] as num?) ?? 0));
-        } else if (sort == 2) {
-          list.sort((a, b) => ((b['viewCount'] as num?) ?? 0).compareTo((a['viewCount'] as num?) ?? 0));
+        int number(Map<String, dynamic> b, String key) => (b[key] as num?)?.toInt() ?? 0;
+        DateTime date(Map<String, dynamic> b) => _parseDate(b['updatedAt'] ?? b['createdAt']) ?? DateTime.fromMillisecondsSinceEpoch(0);
+        switch (sort) {
+          case 0:
+            list.sort((a, b) => date(b).compareTo(date(a)));
+          case 1:
+            double trend(Map<String, dynamic> b) {
+              final ageDays = DateTime.now().difference(date(b)).inHours / 24;
+              return number(b, 'viewCount') / (ageDays < 1 ? 1 : ageDays);
+            }
+            list.sort((a, b) => trend(b).compareTo(trend(a)));
+          case 2:
+            list.sort((a, b) => (number(b, 'ratingUpvotes') + number(b, 'ratingDownvotes'))
+                .compareTo(number(a, 'ratingUpvotes') + number(a, 'ratingDownvotes')));
+          case 3:
+            list.sort((a, b) => number(b, 'viewCount').compareTo(number(a, 'viewCount')));
+          case 4:
+            list.sort((a, b) {
+              final score = number(b, 'ratingScore').compareTo(number(a, 'ratingScore'));
+              if (score != 0) return score;
+              final votesB = number(b, 'ratingUpvotes') + number(b, 'ratingDownvotes');
+              final votesA = number(a, 'ratingUpvotes') + number(a, 'ratingDownvotes');
+              final ratioB = votesB == 0 ? 0.0 : number(b, 'ratingUpvotes') / votesB;
+              final ratioA = votesA == 0 ? 0.0 : number(a, 'ratingUpvotes') / votesA;
+              return ratioB.compareTo(ratioA);
+            });
         }
         return Column(children: [
           Padding(
@@ -464,10 +520,10 @@ class _CommunityBuildsPageState extends State<CommunityBuildsPage> {
             child: Column(children: [
               _searchField('Buscar build o trekker…', (v) => setState(() => query = v.trim())),
               const SizedBox(height: 8),
-              _Segmented(
-                labels: const ['RECIENTES', 'VALORADAS', 'MÁS VISTAS'],
-                index: sort,
-                onChanged: (i) => setState(() => sort = i),
+              _chipRow(
+                const ['NUEVAS', 'TRENDING', 'POPULARES', 'MÁS VISTAS', 'TOP RATE'],
+                const ['NUEVAS', 'TRENDING', 'POPULARES', 'MÁS VISTAS', 'TOP RATE'][sort],
+                (label) => setState(() => sort = const ['NUEVAS', 'TRENDING', 'POPULARES', 'MÁS VISTAS', 'TOP RATE'].indexOf(label)),
               ),
             ]),
           ),
@@ -592,7 +648,7 @@ class _CommunityBuildsPageState extends State<CommunityBuildsPage> {
                   ]),
                   if (pots.isNotEmpty) ...[
                     const SizedBox(height: 8),
-                    for (final p in pots) _communityPotential(p, _asMap(_asMap(c?['potentials']))),
+                    for (final p in pots) _communityPotential(context, p, _asMap(_asMap(c?['potentials']))),
                   ],
                 ]),
             );
