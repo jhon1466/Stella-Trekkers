@@ -41,11 +41,11 @@ class _DatabasePageState extends State<DatabasePage> {
             child: Row(
               children: [
                 Expanded(
-                  child: _tabButton(0, 'PERSONAJES (41)'),
+                  child: _tabButton(0, 'PERSONAJES'),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: _tabButton(1, 'DISCOS RÚNICOS (104)'),
+                  child: _tabButton(1, 'DISCOS RÚNICOS'),
                 ),
               ],
             ),
@@ -302,17 +302,20 @@ class _DatabasePageState extends State<DatabasePage> {
           return const _EmptyNote('No se encontraron discos con los filtros seleccionados.');
         }
 
-        return RefreshIndicator(
-          onRefresh: refresh,
-          child: ListView.builder(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
-            itemCount: list.length,
-            itemBuilder: (ctx, i) {
-              final d = list[i];
-              return _buildDiscCard(d);
-            },
-          ),
-        );
+        return Column(children: [
+          Padding(padding: const EdgeInsets.fromLTRB(14, 0, 14, 6), child: Row(children: [
+            Text('${list.length} DE ${_asList(data).length} DISCS',
+              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1.2, color: kTextMuted)),
+          ])),
+          Expanded(child: RefreshIndicator(
+            onRefresh: refresh,
+            child: ListView.builder(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+              itemCount: list.length,
+              itemBuilder: (ctx, i) => _buildDiscCard(list[i]),
+            ),
+          )),
+        ]);
       },
     );
   }
@@ -437,6 +440,12 @@ class TrekkerDetailPage extends StatelessWidget {
           final skill = _asMap(c['skill']);
           final supportSkill = _asMap(c['supportSkill']);
           final ultimate = _asMap(c['ultimate']);
+          final combatSkills = <(String, Map<String, dynamic>)>[
+            if (normalAttack.isNotEmpty) ('ATAQUE BÁSICO', normalAttack),
+            if (skill.isNotEmpty) ('HABILIDAD PRINCIPAL', skill),
+            if (supportSkill.isNotEmpty) ('HABILIDAD DE APOYO', supportSkill),
+            if (ultimate.isNotEmpty) ('HABILIDAD DEFINITIVA', ultimate),
+          ];
 
           return ListView(
             padding: const EdgeInsets.all(12),
@@ -511,18 +520,7 @@ class TrekkerDetailPage extends StatelessWidget {
                 title: 'Habilidades',
                 badge: 'Combate',
                 padding: const EdgeInsets.all(12),
-                child: Column(
-                  children: [
-                    if (normalAttack.isNotEmpty)
-                      _buildSkillTile('ATAQUE BÁSICO', normalAttack),
-                    if (skill.isNotEmpty)
-                      _buildSkillTile('HABILIDAD PRINCIPAL', skill),
-                    if (supportSkill.isNotEmpty)
-                      _buildSkillTile('HABILIDAD DE APOYO', supportSkill),
-                    if (ultimate.isNotEmpty)
-                      _buildSkillTile('HABILIDAD DEFINITIVA', ultimate),
-                  ],
-                ),
+                child: _TrekkerSkillsPanel(skills: combatSkills),
               ),
               const SizedBox(height: 14),
 
@@ -539,7 +537,10 @@ class TrekkerDetailPage extends StatelessWidget {
                       final sName = _string(sk['name']);
                       final sDesc = _string(sk['description']);
                       final textures = _asMap(sk['textures']);
-                      final sIcon = _string(textures['icon'], _string(textures['portrait']));
+                      final sIcon = _string(textures['icon'], _string(textures['portrait'], _string(textures['banner'], _string(sk['icon']))));
+                      final sPortrait = _string(textures['portrait'], sIcon);
+                      final sBackground = _string(textures['background']);
+                      final skinArt = _skinArtCandidates(sk['id'], sPortrait);
 
                       return Container(
                         margin: const EdgeInsets.only(bottom: 8),
@@ -548,29 +549,38 @@ class TrekkerDetailPage extends StatelessWidget {
                           color: const Color(0xff1d1b18),
                           border: Border.all(color: kBorderColor),
                         ),
-                        child: Row(
-                          children: [
-                            _Thumb(sIcon, size: 50),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(sName.toUpperCase(),
+                        child: InkWell(
+                          onTap: () => _showSkinViewer(context, sk, skinArt, sBackground),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              AspectRatio(aspectRatio: 24 / 17,
+                                child: _NetImage(skinArt.first, fit: BoxFit.contain, alt: skinArt.skip(1).toList())),
+                              Row(children: [
+                                _Thumb(sIcon, size: 50, fit: BoxFit.contain, alt: [sPortrait, _string(textures['background'])]),
+                                const SizedBox(width: 10),
+                                Expanded(child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(sName.toUpperCase(),
                                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis),
-                                  if (sDesc.isNotEmpty) ...[
-                                    const SizedBox(height: 3),
-                                    Text(sDesc,
+                                    if (sDesc.isNotEmpty) ...[
+                                      const SizedBox(height: 3),
+                                      Text(sDesc,
                                         style: const TextStyle(fontSize: 10, color: kTextMuted, height: 1.3),
                                         maxLines: 2,
                                         overflow: TextOverflow.ellipsis),
+                                    ],
                                   ],
-                                ],
-                              ),
-                            ),
-                          ],
+                                )),
+                              ]),
+                              const SizedBox(height: 5),
+                              const Text('TOCA PARA VER LA APARIENCIA COMPLETA', textAlign: TextAlign.center,
+                                style: TextStyle(fontSize: 9, color: kTextMuted, letterSpacing: .5)),
+                            ],
+                          ),
                         ),
                       );
                     }).toList(),
@@ -646,7 +656,7 @@ class TrekkerDetailPage extends StatelessWidget {
                         Wrap(
                           spacing: 6,
                           runSpacing: 6,
-                          children: _asList(giftPrefs['loves']).map((g) => _Tag('$g', color: kSkillOrange)).toList(),
+                          children: _asList(giftPrefs['loves']).map((g) => _giftTile('$g', loved: true)).toList(),
                         ),
                         const SizedBox(height: 10),
                       ],
@@ -656,8 +666,14 @@ class TrekkerDetailPage extends StatelessWidget {
                         Wrap(
                           spacing: 6,
                           runSpacing: 6,
-                          children: _asList(giftPrefs['likes']).map((g) => _Tag('$g', color: kAccentAmber)).toList(),
+                          children: _asList(giftPrefs['likes']).map((g) => _giftTile('$g')).toList(),
                         ),
+                      ],
+                      if (giftPrefs['hates'] is List && _asList(giftPrefs['hates']).isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        const Text('NO LE GUSTA', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: kDestructive)),
+                        const SizedBox(height: 6),
+                        Wrap(spacing: 6, runSpacing: 6, children: _asList(giftPrefs['hates']).map((g) => _giftTile('$g', disliked: true)).toList()),
                       ],
                     ],
                   ),
@@ -670,55 +686,69 @@ class TrekkerDetailPage extends StatelessWidget {
     );
   }
 
-  Widget _buildSkillTile(String typeLabel, Map<String, dynamic> s) {
-    final sName = _string(s['name'], 'Habilidad');
-    final sIcon = _string(s['icon']);
-    final sDesc = _cleanGameText(_string(s['description']), params: _asList(s['params']));
-    final sCd = s['cooldown'] != null ? '${s['cooldown']}' : null;
+  List<String> _skinArtCandidates(dynamic id, String fallback) {
+    final skinId = _string(id);
+    const cdn = 'https://k2b1c5ab57ed98e51.gachawiki.info/stella-sora/charart';
+    return [
+      // StellaBase tries the full CG and full skin artwork before portrait files.
+      if (skinId.isNotEmpty) '${skinId}_CG.png',
+      if (skinId.isNotEmpty) '$skinId.png',
+      if (skinId.isNotEmpty) '$cdn/${skinId}_adv.png',
+      if (skinId.isNotEmpty) '$cdn/${skinId}_SK.png',
+      if (fallback.isNotEmpty) fallback,
+    ];
+  }
 
+  Widget _giftTile(String name, {bool loved = false, bool disliked = false}) {
+    const aliases = {
+      'Card Capturer': 'card-photo-capturer',
+      'Chill Crushed Ice': 'summer-chill-crushed-ice',
+      'Porcelain Cup': 'blossom-porcelain-cup',
+      'Star Eclipse': 'stellanite-enchantment',
+      'Sweet Ice Furry': 'sweet-icefurry',
+    };
+    final slug = aliases[name] ?? name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-').replaceAll(RegExp(r'^-|-$'), '');
+    final color = disliked ? kDestructive : loved ? kSkillOrange : kAccentAmber;
+    const cdn = 'https://k2b1c5ab57ed98e51.gachawiki.info/stella-sora/items';
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: const Color(0xff1d1b18),
-        border: Border.all(color: kBorderHighlight),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _Thumb(sIcon, size: 44, fallbackIcon: Icons.bolt),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        sName.toUpperCase(),
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    _Tag(typeLabel, color: kAccentPurple),
-                  ],
-                ),
-                if (sCd != null) ...[
-                  const SizedBox(height: 2),
-                  Text('ENFRIAMIENTO: $sCd', style: const TextStyle(fontSize: 9, color: kAccentAmber)),
-                ],
-                if (sDesc.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Text(sDesc, style: const TextStyle(fontSize: 11, color: Color(0xffd9d6d0), height: 1.4)),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
+      width: 86,
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(color: kSurface, border: Border.all(color: color.withValues(alpha: .65))),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        SizedBox(width: 58, height: 58, child: _NetImage('$cdn/$slug.png', fit: BoxFit.contain,
+          alt: ['$cdn/${name.toLowerCase().replaceAll(' ', '_')}.png'],
+          fallbackIcon: Icons.card_giftcard_outlined)),
+        const SizedBox(height: 4),
+        Text(name, textAlign: TextAlign.center, maxLines: 3, overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 9, height: 1.15)),
+      ]),
     );
+  }
+
+  void _showSkinViewer(BuildContext context, Map<String, dynamic> skin, List<String> art, String background) {
+    showDialog<void>(context: context, barrierColor: Colors.black, builder: (ctx) => Dialog.fullscreen(
+      backgroundColor: kBgDark,
+      child: SafeArea(child: Column(children: [
+        Row(children: [
+          IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close), tooltip: 'Cerrar'),
+          Expanded(child: Text(_string(skin['name']).toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center, style: kDisplay(18))),
+          const SizedBox(width: 48),
+        ]),
+        Expanded(child: Center(child: InteractiveViewer(
+          minScale: 0.7, maxScale: 6, panEnabled: true, scaleEnabled: true,
+          boundaryMargin: const EdgeInsets.all(100), clipBehavior: Clip.none,
+          child: AspectRatio(aspectRatio: 24 / 17, child: Stack(fit: StackFit.expand, children: [
+            if (background.isNotEmpty) _NetImage(background, fit: BoxFit.cover),
+            _NetImage(art.first, fit: BoxFit.contain, alt: art.skip(1).toList()),
+          ])),
+        ))),
+        if (_string(skin['description']).isNotEmpty)
+          Padding(padding: const EdgeInsets.fromLTRB(16, 10, 16, 18), child: Text(
+            _cleanGameText(_string(skin['description'])), textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12, height: 1.4, color: kTextMuted))),
+      ])),
+    ));
   }
 }
 
@@ -1001,34 +1031,7 @@ List<Widget> _extraTrekkerPanels(Map<String, dynamic> c) {
     'common': 'Comunes',
   };
   if (pots.isNotEmpty) {
-    out.add(_Panel(
-      title: 'Potenciales',
-      badge: 'Potentials',
-      padding: const EdgeInsets.all(12),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        for (final k in potLabels.keys)
-          if (_asList(pots[k]).isNotEmpty) ...[
-            Text(potLabels[k]!.toUpperCase(), style: kDisplay(16)),
-            const SizedBox(height: 6),
-            for (final p in _asList(pots[k]).map(_asMap))
-              Container(
-                margin: const EdgeInsets.only(bottom: 6),
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(border: Border.all(color: kBorderColor)),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Row(children: [
-                    Expanded(child: Text(_string(p['name']), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
-                    if (p['rarity'] != null) _Tag('R${p['rarity']}', color: kTextMuted),
-                  ]),
-                  const SizedBox(height: 4),
-                  Text(_cleanGameText(_string(p['description']), params: _asList(p['params'])),
-                      style: const TextStyle(fontSize: 12, height: 1.4, color: Color(0xffd9d6d0))),
-                ]),
-              ),
-            const SizedBox(height: 8),
-          ],
-      ]),
-    ));
+    out.add(_TrekkerPotentialsPanel(potentials: pots, labels: potLabels));
     out.add(const SizedBox(height: 14));
   }
 
@@ -1065,29 +1068,7 @@ List<Widget> _extraTrekkerPanels(Map<String, dynamic> c) {
 
   final stats = _asList(c['stats']).map(_asMap).toList();
   if (stats.isNotEmpty) {
-    final levels = <int>{1, for (var l = 10; l < stats.length; l += 10) l, stats.length}.toList();
-    out.add(_Panel(
-      title: 'Estadísticas',
-      badge: 'Por nivel',
-      padding: const EdgeInsets.all(12),
-      child: Column(children: [
-        const Row(children: [
-          Expanded(child: Text('NIVEL', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: kTextMuted))),
-          Expanded(child: Text('VIDA', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: kTextMuted))),
-          Expanded(child: Text('ATAQUE', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: kTextMuted))),
-        ]),
-        for (final l in levels)
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: kBorderColor))),
-            child: Row(children: [
-              Expanded(child: Text('$l', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5))),
-              Expanded(child: Text(_formatNumber(_string(stats[l - 1]['hp'])), style: const TextStyle(fontSize: 12.5))),
-              Expanded(child: Text(_formatNumber(_string(stats[l - 1]['atk'])), style: const TextStyle(fontSize: 12.5))),
-            ]),
-          ),
-      ]),
-    ));
+    out.add(_TrekkerStatsPanel(stats: stats));
     out.add(const SizedBox(height: 14));
   }
 
@@ -1117,8 +1098,13 @@ List<Widget> _extraTrekkerPanels(Map<String, dynamic> c) {
                     ),
                 ]),
               ),
-              Text('${_formatNumber(_string(_asMap(u['currency'])['dorra']))} Dorra',
-                  style: const TextStyle(fontSize: 11, color: kTextMuted, fontWeight: FontWeight.w600)),
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                _Thumb('https://k2b1c5ab57ed98e51.gachawiki.info/stella-sora/upgrades/dorra.png',
+                  size: 22, fallbackIcon: Icons.toll_outlined),
+                const SizedBox(width: 4),
+                Text('${_formatNumber(_string(_asMap(u['currency'])['dorra']))} Dorra',
+                    style: const TextStyle(fontSize: 11, color: kTextMuted, fontWeight: FontWeight.w600)),
+              ]),
             ]),
           ),
       ]),
@@ -1126,4 +1112,189 @@ List<Widget> _extraTrekkerPanels(Map<String, dynamic> c) {
     out.add(const SizedBox(height: 14));
   }
   return out;
+}
+
+class _TrekkerStatsPanel extends StatefulWidget {
+  const _TrekkerStatsPanel({required this.stats});
+  final List<Map<String, dynamic>> stats;
+
+  @override
+  State<_TrekkerStatsPanel> createState() => _TrekkerStatsPanelState();
+}
+
+class _TrekkerSkillsPanel extends StatefulWidget {
+  const _TrekkerSkillsPanel({required this.skills});
+  final List<(String, Map<String, dynamic>)> skills;
+
+  @override
+  State<_TrekkerSkillsPanel> createState() => _TrekkerSkillsPanelState();
+}
+
+class _TrekkerSkillsPanelState extends State<_TrekkerSkillsPanel> {
+  int _level = 13;
+
+  @override
+  Widget build(BuildContext context) {
+    final maxLevel = widget.skills
+        .map((entry) => _asList(entry.$2['params']).fold<int>(1, (max, param) {
+          final count = '$param'.split('/').length;
+          return count > max ? count : max;
+        }))
+        .fold<int>(1, (max, count) => count > max ? count : max);
+    final level = _level.clamp(1, maxLevel);
+    return Column(children: [
+      Row(children: [
+        const Expanded(child: Text('NIVEL DE HABILIDAD', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: kTextMuted))),
+        Text('$level / $maxLevel', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+      ]),
+      if (maxLevel > 1)
+        Slider(value: level.toDouble(), min: 1, max: maxLevel.toDouble(), divisions: maxLevel - 1,
+          activeColor: kTextPrimary, onChanged: (value) => setState(() => _level = value.round())),
+      for (final (label, skill) in widget.skills) _skillTile(label, skill, level),
+    ]);
+  }
+
+  Widget _skillTile(String label, Map<String, dynamic> skill, int level) {
+    final params = _asList(skill['params']).map((param) {
+      final values = '$param'.split('/');
+      return values.length > 1 ? values[(level - 1).clamp(0, values.length - 1)] : param;
+    }).toList();
+    final description = _cleanGameText(_string(skill['description']), params: params);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(color: const Color(0xff1d1b18), border: Border.all(color: kBorderHighlight)),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _Thumb(_string(skill['icon']), size: 44, fallbackIcon: Icons.bolt),
+        const SizedBox(width: 10),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(child: Text(_string(skill['name'], 'Habilidad').toUpperCase(),
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis)),
+            _Tag(label, color: kAccentPurple),
+          ]),
+          if (skill['cooldown'] != null) ...[
+            const SizedBox(height: 2),
+            Text('ENFRIAMIENTO: ${skill['cooldown']}', style: const TextStyle(fontSize: 9, color: kAccentAmber)),
+          ],
+          if (description.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(description, style: const TextStyle(fontSize: 11, color: Color(0xffd9d6d0), height: 1.4)),
+          ],
+        ])),
+      ]),
+    );
+  }
+}
+
+class _TrekkerPotentialsPanel extends StatefulWidget {
+  const _TrekkerPotentialsPanel({required this.potentials, required this.labels});
+  final Map<String, dynamic> potentials;
+  final Map<String, String> labels;
+
+  @override
+  State<_TrekkerPotentialsPanel> createState() => _TrekkerPotentialsPanelState();
+}
+
+class _TrekkerPotentialsPanelState extends State<_TrekkerPotentialsPanel> {
+  int _level = 13;
+
+  int get _maxLevel {
+    var result = 1;
+    for (final group in widget.labels.keys) {
+      for (final potential in _asList(widget.potentials[group]).map(_asMap)) {
+        for (final param in _asList(potential['params'])) {
+          final count = '$param'.split('/').length;
+          if (count > result) result = count;
+        }
+      }
+    }
+    return result;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final level = _level.clamp(1, _maxLevel);
+    return _Panel(
+      title: 'Potenciales',
+      badge: '$_maxLevel niveles',
+      padding: const EdgeInsets.all(12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          const Expanded(child: Text('NIVEL DE POTENCIALES', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: kTextMuted))),
+          Text('$level / $_maxLevel', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+        ]),
+        if (_maxLevel > 1)
+          Slider(value: level.toDouble(), min: 1, max: _maxLevel.toDouble(), divisions: _maxLevel - 1,
+            activeColor: kTextPrimary, onChanged: (value) => setState(() => _level = value.round())),
+        for (final group in widget.labels.keys)
+          if (_asList(widget.potentials[group]).isNotEmpty) ...[
+            Text(widget.labels[group]!.toUpperCase(), style: kDisplay(16)),
+            const SizedBox(height: 6),
+            for (final p in _asList(widget.potentials[group]).map(_asMap))
+              Container(
+                margin: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(border: Border.all(color: kBorderColor)),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  _PotentialPlate(p, size: 48),
+                  const SizedBox(width: 9),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(children: [
+                      Expanded(child: Text(_string(p['name']), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
+                      if (p['rarity'] != null) _Tag('R${p['rarity']}', color: kTextMuted),
+                    ]),
+                    const SizedBox(height: 4),
+                    Text(_cleanGameText(_string(p['description']), params: _paramsAtLevel(_asList(p['params']), level)),
+                      style: const TextStyle(fontSize: 12, height: 1.4, color: Color(0xffd9d6d0))),
+                  ])),
+                ]),
+              ),
+          ],
+      ]),
+    );
+  }
+}
+
+List<dynamic> _paramsAtLevel(List<dynamic> params, int level) => params.map((param) {
+  final values = '$param'.split('/');
+  return values.length > 1 ? values[(level - 1).clamp(0, values.length - 1)] : param;
+}).toList();
+
+class _TrekkerStatsPanelState extends State<_TrekkerStatsPanel> {
+  int get _maxLevel => widget.stats.length < 90 ? widget.stats.length : 90;
+  late int _level = _maxLevel;
+
+  @override
+  Widget build(BuildContext context) {
+    final stat = widget.stats[_level - 1];
+    return _Panel(
+      title: 'Estadísticas',
+      badge: '1–$_maxLevel',
+      padding: const EdgeInsets.all(12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          const Expanded(child: Text('TREKKER LEVEL', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: kTextMuted))),
+          Text('$_level / $_maxLevel', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+        ]),
+        Slider(value: _level.toDouble(), min: 1, max: _maxLevel.toDouble(), divisions: _maxLevel - 1,
+          activeColor: kTextPrimary, onChanged: (value) => setState(() => _level = value.round())),
+        Row(children: [
+          Expanded(child: _value('HP', stat['hp'])),
+          const SizedBox(width: 10),
+          Expanded(child: _value('ATK', stat['atk'])),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _value(String label, dynamic value) => Container(
+    padding: const EdgeInsets.all(10),
+    decoration: BoxDecoration(color: kSurface, border: Border.all(color: kBorderColor)),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label, style: const TextStyle(fontSize: 9, color: kTextMuted, fontWeight: FontWeight.w700)),
+      const SizedBox(height: 3),
+      Text(_formatNumber(_string(value)), style: kDisplay(20)),
+    ]),
+  );
 }

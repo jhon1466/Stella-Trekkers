@@ -189,6 +189,39 @@ class _EnemiesPageState extends State<EnemiesPage> {
   }
 }
 
+Widget _communityPotential(Map<String, dynamic> choice, Map<String, dynamic> definitions) {
+  final ref = _string(choice['ref']);
+  final split = ref.split(':');
+  final category = split.isNotEmpty ? split.first : '';
+  final index = split.length > 1 ? int.tryParse(split.last) : null;
+  final candidates = _asList(definitions[category]).map(_asMap).toList();
+  final p = index != null && index >= 0 && index < candidates.length ? candidates[index] : <String, dynamic>{};
+  final level = int.tryParse(_string(choice['level'])) ?? 1;
+  final desc = _cleanGameText(_string(p['description']), params: _paramsAtLevel(_asList(p['params']), level));
+  final priority = _string(choice['priority'], 'medium');
+  return Container(
+    margin: const EdgeInsets.only(bottom: 5),
+    padding: const EdgeInsets.all(7),
+    color: kSurface,
+    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      if (_string(p['icon']).isNotEmpty) ...[
+        _PotentialPlate(p, size: 42),
+        const SizedBox(width: 8),
+      ],
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(_string(p['name'], ref), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+        if (desc.isNotEmpty) Text(desc, style: const TextStyle(fontSize: 10, color: kTextMuted, height: 1.3)),
+      ])),
+      const SizedBox(width: 6),
+      Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+        _Tag(priority.toUpperCase()),
+        const SizedBox(height: 3),
+        Text('NV. $level', style: const TextStyle(fontSize: 9, color: kTextMuted)),
+      ]),
+    ]),
+  );
+}
+
 // ─────────────────────────────────────────────────────────────
 // MONOLITO (respuestas de los diálogos)
 // ─────────────────────────────────────────────────────────────
@@ -408,7 +441,7 @@ class _CommunityBuildsPageState extends State<CommunityBuildsPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: _subAppBar('Builds de la comunidad'),
+    appBar: _subAppBar('Community Builds'),
     body: _Loader<List<dynamic>>(
       load: (r) => Future.wait([Api.site('builds', refresh: r), Api.get('characters'), Api.get('discs')]),
       builder: (context, data, refresh) {
@@ -477,7 +510,7 @@ class _CommunityBuildsPageState extends State<CommunityBuildsPage> {
                 padding: const EdgeInsets.only(right: 6),
                 child: Container(
                   decoration: BoxDecoration(border: Border.all(color: t == mainId ? kTextPrimary : Colors.transparent, width: 2)),
-                  child: _Thumb(_charHead(t), size: 42),
+                  child: _Thumb(_string(chars[t]?['icon'], _charHead(t)), size: 42, alt: [_charHead(t), _string(chars[t]?['portrait'])]),
                 ),
               ),
             const SizedBox(width: 6),
@@ -505,29 +538,44 @@ class _CommunityBuildsPageState extends State<CommunityBuildsPage> {
   }
 
   void _detail(String id, Map<String, Map<String, dynamic>> chars, Map<String, Map<String, dynamic>> discs) {
+    final buildFuture = Api.site('builds/$id');
     _showSheet(context, title: 'Build', children: [
       FutureBuilder<dynamic>(
-        future: Api.site('builds/$id'),
+        future: buildFuture,
         builder: (context, snap) {
           if (snap.hasError) return const _EmptyNote('No se pudo cargar la build');
           if (!snap.hasData) return const Padding(padding: EdgeInsets.all(30), child: _Spinner());
           final b = _asMap(_asMap(snap.data)['build']);
           final slots = _asMap(b['slots']);
+          final slotEntries = <(String, Map<String, dynamic>)>[
+            if (slots['main'] != null) ('PRINCIPAL', _asMap(slots['main'])),
+            if (slots['support1'] != null) ('APOYO 1', _asMap(slots['support1'])),
+            if (slots['support2'] != null) ('APOYO 2', _asMap(slots['support2'])),
+          ];
+          final detailFutures = <String, Future<dynamic>>{};
+          for (final entry in slotEntries) {
+            final trekkerId = _string(entry.$2['trekkerId']);
+            if (trekkerId.isNotEmpty) {
+              detailFutures.putIfAbsent(trekkerId, () => Api.get('character/$trekkerId'));
+            }
+          }
           final main = _asList(b['discsMain']).map((x) => '$x').toList();
           final subs = _asList(b['discsSubs']).map((x) => '$x').toList();
-          Widget slot(String label, Map<String, dynamic> s) {
-            final c = chars[_string(s['trekkerId'])];
+          Widget slot(String label, Map<String, dynamic> s, Map<String, dynamic>? detailed) {
+            final trekkerId = _string(s['trekkerId']);
+            final c = detailed ?? chars[trekkerId];
             final pots = _asList(s['potentials']).map(_asMap).toList();
             final core = pots.where((p) => p['priority'] == 'core').length;
             return Container(
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(border: Border.all(color: kBorderColor, width: 1.5)),
-              child: Row(children: [
-                _Thumb(_charHead(s['trekkerId']), size: 52),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    _Thumb(_string(c?['icon'], _charHead(s['trekkerId'])), size: 52, alt: [_charHead(s['trekkerId']), _string(c?['portrait'])]),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(label, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: kTextMuted)),
                     Text(_string(c?['name'], '—').toUpperCase(), style: kDisplay(18)),
                     Text('${pots.length} potenciales · $core clave',
@@ -535,7 +583,12 @@ class _CommunityBuildsPageState extends State<CommunityBuildsPage> {
                   ]),
                 ),
                 if (c != null) _Tag(_elementLabel(_string(c['element'])), color: _elementColor(_string(c['element']))),
-              ]),
+                  ]),
+                  if (pots.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    for (final p in pots) _communityPotential(p, _asMap(_asMap(c?['potentials']))),
+                  ],
+                ]),
             );
           }
 
@@ -556,9 +609,14 @@ class _CommunityBuildsPageState extends State<CommunityBuildsPage> {
           return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Text(_string(b['name']).toUpperCase(), style: kDisplay(24)),
             const SizedBox(height: 12),
-            if (slots['main'] != null) slot('PRINCIPAL', _asMap(slots['main'])),
-            if (slots['support1'] != null) slot('APOYO 1', _asMap(slots['support1'])),
-            if (slots['support2'] != null) slot('APOYO 2', _asMap(slots['support2'])),
+            for (final entry in slotEntries)
+              FutureBuilder<dynamic>(
+                future: detailFutures[_string(entry.$2['trekkerId'])],
+                builder: (context, detailSnap) => slot(
+                  entry.$1, entry.$2,
+                  detailSnap.hasData ? _asMap(detailSnap.data) : chars[_string(entry.$2['trekkerId'])],
+                ),
+              ),
             const SizedBox(height: 8),
             if (main.isNotEmpty) discRow('DISCOS PRINCIPALES', main),
             if (subs.isNotEmpty) ...[const SizedBox(height: 8), discRow('DISCOS SECUNDARIOS', subs)],
@@ -589,7 +647,7 @@ class ChangelogPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: _subAppBar('Registro de cambios'),
+    appBar: _subAppBar('Changelog'),
     body: _Loader<dynamic>(
       load: (r) => Api.site('changelog', refresh: r),
       builder: (context, data, refresh) {

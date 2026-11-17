@@ -18,6 +18,9 @@ class _TeamBuilderPageState extends State<TeamBuilderPage> {
   Map<String, dynamic>? _leader;
   Map<String, dynamic>? _sub1;
   Map<String, dynamic>? _sub2;
+  List<Map<String, dynamic>?> _mainDiscs = List<Map<String, dynamic>?>.filled(3, null);
+  List<Map<String, dynamic>?> _subDiscs = List<Map<String, dynamic>?>.filled(6, null);
+  final Map<int, List<Map<String, dynamic>>> _potentials = {0: [], 1: [], 2: []};
 
   // Equipos guardados en memoria / SharedPreferences
   List<Map<String, dynamic>> _savedTeams = [];
@@ -51,6 +54,9 @@ class _TeamBuilderPageState extends State<TeamBuilderPage> {
         'leader': _leader,
         'sub1': _sub1,
         'sub2': _sub2,
+        'mainDiscs': _mainDiscs,
+        'subDiscs': _subDiscs,
+        'potentials': _potentials.map((k, v) => MapEntry('$k', v)),
       };
       final updated = List<Map<String, dynamic>>.from(_savedTeams)..insert(0, newEntry);
       await sp.setString('custom_saved_teams', jsonEncode(updated));
@@ -75,13 +81,30 @@ class _TeamBuilderPageState extends State<TeamBuilderPage> {
     } catch (_) {}
   }
 
-  void _loadSquad(Map<String, dynamic>? l, Map<String, dynamic>? s1, Map<String, dynamic>? s2) {
+  void _loadSquad(Map<String, dynamic>? l, Map<String, dynamic>? s1, Map<String, dynamic>? s2, [Map<String, dynamic>? saved]) {
     setState(() {
       _leader = l;
       _sub1 = s1;
       _sub2 = s2;
+      if (saved != null) {
+        _mainDiscs = _nullableMaps(saved['mainDiscs'], 3);
+        _subDiscs = _nullableMaps(saved['subDiscs'], 6);
+        final raw = _asMap(saved['potentials']);
+        for (var i = 0; i < 3; i++) {
+          _potentials[i] = _asList(raw['$i']).map(_asMap).toList();
+        }
+      } else {
+        _mainDiscs = List<Map<String, dynamic>?>.filled(3, null);
+        _subDiscs = List<Map<String, dynamic>?>.filled(6, null);
+        for (var i = 0; i < 3; i++) { _potentials[i] = []; }
+      }
       _viewTab = 0;
     });
+  }
+
+  List<Map<String, dynamic>?> _nullableMaps(dynamic raw, int size) {
+    final values = _asList(raw).map((v) => v == null ? null : _asMap(v)).toList();
+    return List<Map<String, dynamic>?>.generate(size, (i) => i < values.length ? values[i] : null);
   }
 
   @override
@@ -113,7 +136,7 @@ class _TeamBuilderPageState extends State<TeamBuilderPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'CREADOR DE EQUIPOS',
+                          'TEAM BUILDER',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -123,7 +146,7 @@ class _TeamBuilderPageState extends State<TeamBuilderPage> {
                           ),
                         ),
                         Text(
-                          'SIMULADOR DE AFINIDADES, RESONANCIA Y BUILDS META',
+                          'TREKKERS · DISCS · POTENTIALS',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -234,6 +257,15 @@ class _TeamBuilderPageState extends State<TeamBuilderPage> {
             Expanded(child: _buildSlot('APOYO 2', _sub2, 2, Icons.flash_on_outlined)),
           ],
         ),
+        const SizedBox(height: 14),
+        _discSlots('MAIN', _mainDiscs, 3),
+        const SizedBox(height: 10),
+        _discSlots('SUB', _subDiscs, 6),
+        const SizedBox(height: 14),
+        for (final entry in <(String, Map<String, dynamic>?, int)>[
+          ('MAIN', _leader, 0), ('SUPPORT 1', _sub1, 1), ('SUPPORT 2', _sub2, 2),
+        ]) if (entry.$2 != null) _potentialControl(entry.$1, entry.$2!, entry.$3),
+        const SizedBox(height: 14),
         const SizedBox(height: 16),
 
         // Barra de acciones del simulador
@@ -260,6 +292,9 @@ class _TeamBuilderPageState extends State<TeamBuilderPage> {
                         _leader = null;
                         _sub1 = null;
                         _sub2 = null;
+                        _mainDiscs = List<Map<String, dynamic>?>.filled(3, null);
+                        _subDiscs = List<Map<String, dynamic>?>.filled(6, null);
+                        for (var i = 0; i < 3; i++) { _potentials[i] = []; }
                       }),
               style: OutlinedButton.styleFrom(
                 foregroundColor: kDestructive,
@@ -377,6 +412,189 @@ class _TeamBuilderPageState extends State<TeamBuilderPage> {
     );
   }
 
+  Widget _discSlots(String label, List<Map<String, dynamic>?> discs, int capacity) => _Panel(
+    title: '$label · ${discs.where((d) => d != null).length}/$capacity',
+    padding: const EdgeInsets.all(10),
+    child: Wrap(spacing: 8, runSpacing: 8, children: [
+      for (var i = 0; i < capacity; i++) InkWell(
+        onTap: () => _openDiscPicker(label == 'MAIN' ? _mainDiscs : _subDiscs, i),
+        child: Container(width: 76, height: 92, decoration: BoxDecoration(
+          border: Border.all(color: discs[i] == null ? kBorderColor : kBorderHighlight)),
+          child: Stack(children: [
+            Center(child: discs[i] == null
+              ? const Icon(Icons.add, color: kTextMuted)
+              : Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  _Thumb(_string(discs[i]!['icon']), size: 48, fallbackIcon: Icons.album_outlined),
+                  Padding(padding: const EdgeInsets.symmetric(horizontal: 3), child: Text(_string(discs[i]!['name']),
+                    maxLines: 2, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 8))),
+                ])),
+            if (discs[i] != null) Positioned(right: 0, top: 0, child: InkWell(
+              onTap: () => setState(() => discs[i] = null),
+              child: const Icon(Icons.close, size: 16, color: kDestructive))),
+          ]),
+        ),
+      ),
+    ]),
+  );
+
+  void _openDiscPicker(List<Map<String, dynamic>?> target, int index) {
+    showModalBottomSheet<void>(context: context, isScrollControlled: true, backgroundColor: kBgDark,
+      builder: (ctx) => SafeArea(child: SizedBox(height: MediaQuery.sizeOf(ctx).height * .8,
+        child: FutureBuilder<dynamic>(future: Api.get('discs'), builder: (context, snap) {
+          if (!snap.hasData) return const Center(child: _Spinner());
+          final list = _asList(snap.data).map(_asMap).toList();
+          return ListView(children: [
+            ListTile(title: const Text('Seleccionar disco'), trailing: IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx))),
+            for (final disc in list) ListTile(
+              leading: _Thumb(_string(disc['icon'], _string(disc['base'])), size: 44, fallbackIcon: Icons.album_outlined),
+              title: Text(_string(disc['name'])), subtitle: Text('${_string(disc['star'])}★ · ${_string(disc['element'])}'),
+              onTap: () { setState(() => target[index] = disc); Navigator.pop(ctx); },
+            ),
+          ]);
+        }))),
+    );
+  }
+
+  Widget _potentialControl(String label, Map<String, dynamic> trekker, int index) => Container(
+    margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.all(10),
+    decoration: BoxDecoration(color: kPanelBg, border: Border.all(color: kBorderColor)),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [Expanded(child: Text('$label · ${_potentials[index]?.length ?? 0} potenciales', style: kDisplay(16))),
+        TextButton.icon(onPressed: () => _openPotentialPicker(index, trekker), icon: const Icon(Icons.tune, size: 16), label: const Text('EDITAR'))]),
+      for (final p in _potentials[index] ?? const <Map<String, dynamic>>[])
+        Container(margin: const EdgeInsets.only(bottom: 5), padding: const EdgeInsets.all(5),
+          decoration: BoxDecoration(color: kSurface, border: Border.all(color: kBorderColor)),
+          child: Row(children: [
+            _PotentialPlate(p, size: 42),
+            const SizedBox(width: 7),
+            Expanded(child: Text('${_string(p['name'])} · Nv.${_string(p['level'])} · ${_string(p['priority'])}',
+              style: const TextStyle(fontSize: 10, color: kTextMuted))),
+          ])),
+    ]),
+  );
+
+  Future<void> _openPotentialPicker(int slot, Map<String, dynamic> trekker) async {
+    final detail = _asMap(await Api.get('character/${trekker['id']}'));
+    if (!mounted) return;
+    final definitions = _asMap(detail['potentials']);
+    final categories = slot == 0
+      ? ['mainCore', 'mainNormal', 'common']
+      : ['supportCore', 'supportNormal', 'common'];
+    final optionsByGroup = <String, List<Map<String, dynamic>>>{};
+    for (final category in categories) {
+      final list = _asList(definitions[category]).map(_asMap).toList();
+      optionsByGroup[category] = [
+        for (var i = 0; i < list.length; i++) {...list[i], 'ref': '$category:$i'},
+      ];
+    }
+    final selected = <String, Map<String, dynamic>>{
+      for (final p in _potentials[slot] ?? []) _string(p['ref']): Map<String, dynamic>.from(p),
+    };
+    await showModalBottomSheet<void>(context: context, isScrollControlled: true, backgroundColor: kBgDark,
+      builder: (ctx) => StatefulBuilder(builder: (context, refresh) {
+        Widget potentialCard(Map<String, dynamic> p, {required bool disabled}) {
+          final ref = _string(p['ref']);
+          final chosen = selected[ref];
+          return Opacity(opacity: disabled ? .38 : 1, child: Container(
+            margin: const EdgeInsets.only(bottom: 7),
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(color: kPanelBg, border: Border.all(color: kBorderColor)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                _PotentialPlate(p, size: 48),
+                Checkbox(value: chosen != null, onChanged: disabled ? null : (v) => refresh(() {
+                  if (v == true) {
+                    selected[ref] = {...p, 'ref': ref, 'level': 1, 'priority': 'medium'};
+                  } else {
+                    selected.remove(ref);
+                  }
+                })),
+                const SizedBox(width: 6),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(_string(p['name']), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, height: 1.2)),
+                  const SizedBox(height: 4),
+                  Text(_cleanGameText(_string(p['description']), params: _asList(p['params'])),
+                    style: const TextStyle(fontSize: 11, height: 1.3, color: kTextMuted)),
+                ])),
+              ]),
+              if (chosen != null) ...[
+                const SizedBox(height: 7),
+                Wrap(spacing: 6, runSpacing: 4, children: [
+                  PopupMenuButton<int>(
+                    tooltip: 'Cambiar nivel del potencial', padding: EdgeInsets.zero,
+                    onSelected: (v) => refresh(() => chosen['level'] = v),
+                    itemBuilder: (context) => List.generate(13, (i) => PopupMenuItem(value: i + 1, child: Text('Nivel ${i + 1}'))),
+                    child: _potentialSetting('Nivel: ${_string(chosen['level'], '1')}'),
+                  ),
+                  PopupMenuButton<String>(
+                    tooltip: 'Cambiar prioridad del potencial', padding: EdgeInsets.zero,
+                    onSelected: (v) => refresh(() => chosen['priority'] = v),
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(value: 'core', child: Text('Clave')),
+                      PopupMenuItem(value: 'medium', child: Text('Media')),
+                      PopupMenuItem(value: 'optional', child: Text('Opcional')),
+                    ],
+                    child: _potentialSetting('Prioridad: ${switch (_string(chosen['priority'], 'medium')) {
+                      'core' => 'Clave', 'optional' => 'Opcional', _ => 'Media',
+                    }}'),
+                  ),
+                ]),
+              ],
+            ]),
+          ));
+        }
+
+        return SafeArea(child: SizedBox(
+        height: MediaQuery.sizeOf(ctx).height * .85,
+        child: Column(children: [
+          ListTile(
+            title: Text('${_string(trekker['name']).toUpperCase()} · POTENTIALS'),
+            subtitle: Text('${selected.length} SELECCIONADOS', style: const TextStyle(fontSize: 10, letterSpacing: 1.1)),
+            trailing: IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
+          ),
+          Expanded(child: ListView(padding: const EdgeInsets.fromLTRB(10, 4, 10, 12), children: [
+            for (final category in categories) Builder(builder: (context) {
+              final group = optionsByGroup[category] ?? const <Map<String, dynamic>>[];
+              final chosenCount = group.where((p) => selected.containsKey(_string(p['ref']))).length;
+              final limit = category.endsWith('Core') ? 2 : group.length;
+              final label = switch (category) {
+                'mainCore' => 'MAIN CORE',
+                'mainNormal' => 'MAIN',
+                'supportCore' => 'SUPPORT CORE',
+                'supportNormal' => 'SUPPORT',
+                _ => 'COMMON',
+              };
+              return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Padding(padding: const EdgeInsets.fromLTRB(4, 10, 4, 7), child: Row(children: [
+                  Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.2, color: kTextMuted)),
+                  const SizedBox(width: 7),
+                  Text('$chosenCount/$limit', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: kTextMuted)),
+                ])),
+                for (final p in group)
+                  potentialCard(p, disabled: !selected.containsKey(_string(p['ref'])) && chosenCount >= limit),
+              ]);
+            }),
+          ])),
+          Padding(padding: const EdgeInsets.all(10), child: SizedBox(width: double.infinity, child: ElevatedButton(
+            onPressed: () { setState(() => _potentials[slot] = selected.values.toList()); Navigator.pop(ctx); },
+            child: Text('GUARDAR ${selected.length} POTENCIALES')))),
+        ]),
+      ));
+      }),
+    );
+  }
+
+  Widget _potentialSetting(String label) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+    decoration: BoxDecoration(color: kSurface, border: Border.all(color: kBorderColor)),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [
+      Text(label, maxLines: 1, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: kTextPrimary)),
+      const SizedBox(width: 3),
+      const Icon(Icons.arrow_drop_down, size: 16, color: kTextMuted),
+    ]),
+  );
+
   Widget _buildSlot(String roleTag, Map<String, dynamic>? char, int slotIndex, IconData placeholderIcon) {
     return Container(
       height: 180,
@@ -466,7 +684,7 @@ class _TeamBuilderPageState extends State<TeamBuilderPage> {
                                 style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
                               ),
                               Text(
-                                '${char['rarity'] ?? 5}★ · Nv. 90',
+                                '${char['grade'] ?? char['rarity'] ?? 5}★ · Nv. 90',
                                 style: const TextStyle(fontSize: 9, color: kTextMuted),
                               ),
                             ],
@@ -795,7 +1013,7 @@ class _TeamBuilderPageState extends State<TeamBuilderPage> {
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton(
-                    onPressed: () => _loadSquad(l, s1, s2),
+                    onPressed: () => _loadSquad(l, s1, s2, t),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: kTextPrimary,
                       side: const BorderSide(color: kBorderColor),
@@ -929,9 +1147,10 @@ class _TrekkerPickerSheet extends StatefulWidget {
 
 class _TrekkerPickerSheetState extends State<_TrekkerPickerSheet> {
   String _selectedElement = 'TODOS';
+  int? _selectedGrade;
   String _search = '';
 
-  static const _elements = ['TODOS', 'FUEGO', 'AGUA', 'VIENTO', 'TIERRA', 'LUZ', 'OSCURIDAD'];
+  static const _elements = ['TODOS', 'IGNIS', 'AQUA', 'VENTUS', 'TERRA', 'LUX', 'UMBRA'];
 
   @override
   Widget build(BuildContext context) {
@@ -1028,6 +1247,33 @@ class _TrekkerPickerSheetState extends State<_TrekkerPickerSheet> {
                   },
                 ),
               ),
+              const SizedBox(height: 6),
+              SizedBox(
+                height: 34,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  children: [null, 5, 4, 3].map((grade) {
+                    final selected = _selectedGrade == grade;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: InkWell(
+                        onTap: () => setState(() => _selectedGrade = grade),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: selected ? kTextPrimary : kPanelBg,
+                            border: Border.all(color: selected ? kTextPrimary : kBorderColor),
+                          ),
+                          child: Text(grade == null ? 'TODAS LAS RAREZAS' : '$grade★',
+                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+                              color: selected ? kInk : kTextMuted)),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
               const SizedBox(height: 8),
 
               // Rejilla de Trekkers
@@ -1047,9 +1293,11 @@ class _TrekkerPickerSheetState extends State<_TrekkerPickerSheet> {
                       final name = (c['name'] ?? '').toString().toLowerCase();
                       if (_search.isNotEmpty && !name.contains(_search.toLowerCase())) return false;
                       if (_selectedElement != 'TODOS') {
-                        final elem = _elementLabel(c['element']?.toString()).toUpperCase();
+                        final elem = (c['element']?.toString() ?? '').toUpperCase();
                         if (elem != _selectedElement) return false;
                       }
+                      final grade = int.tryParse('${c['grade'] ?? c['rarity'] ?? ''}');
+                      if (_selectedGrade != null && grade != _selectedGrade) return false;
                       return true;
                     }).toList();
 
@@ -1072,7 +1320,7 @@ class _TrekkerPickerSheetState extends State<_TrekkerPickerSheet> {
                         final name = c['name']?.toString() ?? '';
                         final icon = c['icon']?.toString() ?? '';
                         final elem = c['element']?.toString();
-                        final rarity = c['rarity']?.toString() ?? '5';
+                        final rarity = c['grade']?.toString() ?? c['rarity']?.toString() ?? '5';
 
                         return InkWell(
                           onTap: () => widget.onSelected(c),
@@ -1088,7 +1336,8 @@ class _TrekkerPickerSheetState extends State<_TrekkerPickerSheet> {
                                   child: Stack(
                                     fit: StackFit.expand,
                                     children: [
-                                      _NetImage(icon, fit: BoxFit.cover),
+                                      _NetImage(icon, fit: BoxFit.cover,
+                                        alt: [c['portrait']?.toString(), c['background']?.toString()]),
                                       Positioned(
                                         top: 4,
                                         left: 4,

@@ -202,13 +202,17 @@ class Api {
     var p = path.trim();
     if (p.isEmpty || p == 'null') return '';
     if (p.startsWith('http://') || p.startsWith('https://')) return p;
+    // La API suele devolver rutas web absolutas como /stella/assets/Icon/....
+    // Preserva la ruta relativa al bucket de assets en lugar de duplicar "stella".
     if (p.startsWith('/stella/assets/')) {
       p = p.substring('/stella/assets/'.length);
+    } else if (p.startsWith('stella/assets/')) {
+      p = p.substring('stella/assets/'.length);
     } else if (p.startsWith('/')) {
       p = p.substring(1);
     }
     if (!p.split('/').last.contains('.')) p = '$p.png';
-    return '$_assetRoot$p';
+    return Uri.encodeFull('$_assetRoot$p');
   }
 }
 
@@ -346,36 +350,36 @@ class _CompanionShellState extends State<CompanionShell> {
                 ],
               ),
             ),
-            _drawerCategory('BIBLIOTECA'),
-            _drawerItem('Panel', Icons.space_dashboard_outlined, () => goTab(0), active: tab == 0),
+            _drawerCategory('LIBRARY'),
+            _drawerItem('Dashboard', Icons.space_dashboard_outlined, () => goTab(0), active: tab == 0),
             _drawerItem('Trekkers', Icons.groups_outlined, () => _push(const CharactersPage())),
-            _drawerItem('Cumpleaños', Icons.cake_outlined, () => _push(const BirthdaysPage())),
-            _drawerItem('Discos', Icons.album_outlined, () => _push(const DiscsPage())),
-            _drawerItem('Enemigos', Icons.pest_control_outlined, () => _push(const EnemiesPage())),
-            _drawerItem('Monolito', Icons.forum_outlined, () => _push(const MonolithPage())),
-            _drawerItem('Emblemas', Icons.shield_outlined, () => _push(const EmblemsPage())),
+            _drawerItem('Birthdays', Icons.cake_outlined, () => _push(const BirthdaysPage())),
+            _drawerItem('Discs', Icons.album_outlined, () => _push(const DiscsPage())),
+            _drawerItem('Enemies', Icons.pest_control_outlined, () => _push(const EnemiesPage())),
+            _drawerItem('Monolith', Icons.forum_outlined, () => _push(const MonolithPage())),
+            _drawerItem('Emblems', Icons.shield_outlined, () => _push(const EmblemsPage())),
             _divider(),
-            _drawerCategory('EQUIPOS'),
-            _drawerItem('Creador de equipos', Icons.handyman_outlined, () => _push(const TeamBuilderPage())),
-            _drawerItem('Builds de la comunidad', Icons.people_alt_outlined, () => _push(const CommunityBuildsPage())),
+            _drawerCategory('TEAMS'),
+            _drawerItem('Team Builder', Icons.handyman_outlined, () => _push(const TeamBuilderPage())),
+            _drawerItem('Community Builds', Icons.people_alt_outlined, () => _push(const CommunityBuildsPage())),
             _divider(),
-            _drawerCategory('CALENDARIO'),
-            _drawerItem('Gachas', Icons.auto_awesome_outlined, () => _push(const BannersPage())),
-            _drawerItem('Eventos', Icons.event_outlined, () => _push(const EventsPage())),
-            _drawerItem('Noticias', Icons.campaign_outlined, () => _push(const NewsPage())),
+            _drawerCategory('SCHEDULE'),
+            _drawerItem('Banners', Icons.auto_awesome_outlined, () => _push(const BannersPage())),
+            _drawerItem('Events', Icons.event_outlined, () => _push(const EventsPage())),
             _divider(),
-            _drawerCategory('COMBATE'),
-            _drawerItem('Joint Drill', Icons.sports_martial_arts_outlined, () => _push(const RaidsPage())),
-            _drawerItem('Ranking de Joint Drill', Icons.military_tech_outlined,
+            _drawerCategory('COMBAT'),
+            _drawerItem('Raids', Icons.sports_martial_arts_outlined, () => _push(const RaidsPage())),
+            _drawerItem('Raids Ranking', Icons.military_tech_outlined,
                 () => _push(const RankingListPage(kind: RankingKind.jointDrill))),
             _drawerItem('Boss Blitz', Icons.bolt_outlined, () => _push(const BossBlitzPage())),
-            _drawerItem('Ranking de Boss Blitz', Icons.emoji_events_outlined,
+            _drawerItem('Blitz Ranking', Icons.emoji_events_outlined,
                 () => _push(const RankingListPage(kind: RankingKind.scoreBoss))),
-            _drawerItem('Jefe mundial', Icons.public_outlined, () => _push(const WorldBossPage())),
+            _drawerItem('World Boss', Icons.public_outlined, () => _push(const WorldBossPage())),
             _divider(),
-            _drawerCategory('OTROS'),
-            _drawerItem('Registro de cambios', Icons.history_outlined, () => _push(const ChangelogPage())),
-            _drawerItem('Mi cuenta', Icons.person_outline, () => goTab(4), active: tab == 4),
+            _drawerCategory('SITE'),
+            _drawerItem('Changelog', Icons.history_outlined, () => _push(const ChangelogPage())),
+            _drawerItem('Feedback', Icons.feedback_outlined, () => launchUrl(
+              Uri.parse('https://stella.ennead.cc/feedback'), mode: LaunchMode.externalApplication)),
             const SizedBox(height: 24),
           ],
         ),
@@ -629,6 +633,52 @@ class _NetImage extends StatelessWidget {
     }
 
     return at(0);
+  }
+}
+
+/// StellaBase builds a PotentialPlate from a rarity frame plus the potential's
+/// `_A` artwork and, where present, a corner marker. The API's raw `icon`
+/// field omits that suffix, so using it directly returns a 404.
+class _PotentialPlate extends StatelessWidget {
+  const _PotentialPlate(this.potential, {this.size = 48});
+  final Map<String, dynamic> potential;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final stype = int.tryParse('${potential['stype'] ?? ''}');
+    final rarity = int.tryParse('${potential['rarity'] ?? ''}');
+    final frame = stype == 42
+        ? 'rare_vestige_s_card_s_6.png'
+        : rarity == 1
+            ? 'rare_vestige_s_card_5.png'
+            : 'rare_vestige_s_card_4.png';
+    var icon = _string(potential['icon']);
+    if (icon.isNotEmpty && !icon.startsWith('http')) {
+      if (icon.startsWith('/stella/assets/')) {
+        icon = icon.substring('/stella/assets/'.length);
+      }
+      icon = icon.replaceFirst(RegExp(r'\.png$', caseSensitive: false), '');
+      if (!icon.endsWith('_A')) icon = '${icon}_A';
+    } else if (icon.isNotEmpty && !RegExp(r'_A\.(png|webp)$', caseSensitive: false).hasMatch(icon)) {
+      icon = icon.replaceFirst(RegExp(r'\.(png|webp)$', caseSensitive: false), '_A.png');
+    }
+    final corner = int.tryParse('${potential['corner'] ?? ''}');
+    final cornerAsset = switch (corner) {
+      1 => 'Potential_Diamond_A.png',
+      2 => 'Potential_Triangle_A.png',
+      3 => 'Potential_Round_A.png',
+      _ => null,
+    };
+    return SizedBox.square(dimension: size, child: Stack(fit: StackFit.expand, children: [
+      _NetImage('/stella/assets/potentials/$frame', fit: BoxFit.contain),
+      if (icon.isNotEmpty)
+        Center(child: FractionallySizedBox(widthFactor: .68, heightFactor: .68,
+          child: _NetImage(icon, fit: BoxFit.contain, fallbackIcon: Icons.auto_awesome))),
+      if (cornerAsset != null)
+        Positioned(left: size * .3, bottom: size * .04, width: size * .4, height: size * .4,
+          child: _NetImage('/stella/assets/potentials/$cornerAsset', fit: BoxFit.contain)),
+    ]));
   }
 }
 
