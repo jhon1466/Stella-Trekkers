@@ -77,7 +77,14 @@ class _HomePageState extends State<HomePage> {
           final blitz = _asList(
             _asMap(_asMap(data[5])['blitz'])['rotations'],
           ).map(_asMap).toList();
-          final current = _asList(banners['current']).map(_asMap).toList();
+          final now = DateTime.now();
+          final current = _asList(banners['current']).map(_asMap).where((b) {
+            final start = _parseDate(b['startTime']);
+            final end = _parseDate(b['endTime']);
+            return (start == null || !now.isBefore(start)) && (end == null || now.isBefore(end));
+          }).toList()
+            ..sort((a, b) => (_parseDate(a['endTime']) ?? DateTime(9999)).compareTo(
+              _parseDate(b['endTime']) ?? DateTime(9999)));
 
           return RefreshIndicator(
             color: kInk,
@@ -129,7 +136,7 @@ class _HomePageState extends State<HomePage> {
         ? _string(five.first['element'])
         : _string(b['element']);
     final assets = _asMap(b['assets']);
-    final artChain = _imageChain(assets, ['banner', 'tabIcon', 'cover']);
+    final artChain = _imageChain(assets, ['banner', 'cover', 'tabIcon']);
     final art = artChain.isEmpty ? '' : artChain.first;
     const ink = TextStyle(
       color: kInk,
@@ -1118,7 +1125,7 @@ class _HomePageState extends State<HomePage> {
     final rows = groups[scheduleTab].take(scheduleTab == 3 ? 10 : 30).toList();
     return _Panel(
       title: 'Calendario',
-      badge: 'Gachas',
+      badge: 'Banners',
       onMore: () => _push(const BannersPage()),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

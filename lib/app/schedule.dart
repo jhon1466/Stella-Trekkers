@@ -12,7 +12,7 @@ class SchedulePage extends StatefulWidget {
 }
 
 class _SchedulePageState extends State<SchedulePage> {
-  int _tab = 0; // 0: Gachas, 1: Eventos, 2: Noticias
+  int _tab = 0; // 0: Banners, 1: Events, 2: News
 
   @override
   Widget build(BuildContext context) {
@@ -53,7 +53,7 @@ class _SchedulePageState extends State<SchedulePage> {
                           ),
                         ),
                         Text(
-                          'GACHAS ACTIVOS, EVENTOS DE TEMPORADA Y AVISOS',
+                          'BANNERS, SEASONAL EVENTS AND NOTICES',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -78,9 +78,9 @@ class _SchedulePageState extends State<SchedulePage> {
               ),
               child: Row(
                 children: [
-                  _tabBtn(0, 'GACHAS', Icons.auto_awesome_outlined),
-                  _tabBtn(1, 'EVENTOS', Icons.event_outlined),
-                  _tabBtn(2, 'NOTICIAS', Icons.campaign_outlined),
+                  _tabBtn(0, 'BANNERS', Icons.auto_awesome_outlined),
+                  _tabBtn(1, 'EVENTS', Icons.event_outlined),
+                  _tabBtn(2, 'NEWS', Icons.campaign_outlined),
                 ],
               ),
             ),
@@ -153,7 +153,7 @@ class BannersPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: _subAppBar('Gachas'),
+      appBar: _subAppBar('Banners'),
       body: const SafeArea(child: _BannersView()),
     );
   }
@@ -196,11 +196,18 @@ class _BannersView extends StatefulWidget {
 
 class _BannersViewState extends State<_BannersView> {
   int _subFilter = 0; // 0: Actuales, 1: Permanentes, 2: Finalizados
+  late Future<dynamic> _bannersFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _bannersFuture = Api.get('banners');
+  }
 
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<dynamic>(
-      future: Api.get('banners'),
+      future: _bannersFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const _Spinner();
@@ -209,15 +216,28 @@ class _BannersViewState extends State<_BannersView> {
           return Center(
             child: _ErrorView(
               msg: 'No se pudo cargar la lista de banners.',
-              onRetry: () => setState(() {}),
+              onRetry: () => setState(() => _bannersFuture = Api.get('banners', refresh: true)),
             ),
           );
         }
 
         final data = snapshot.data as Map<String, dynamic>;
-        final current = (data['current'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+        final now = DateTime.now();
+        final current = ((data['current'] as List?)?.cast<Map<String, dynamic>>() ?? []).where((b) {
+          final start = _parseDate(b['startTime']);
+          final end = _parseDate(b['endTime']);
+          return (start == null || !now.isBefore(start)) && (end == null || now.isBefore(end));
+        }).toList()
+          ..sort((a, b) => (_parseDate(a['endTime']) ?? DateTime(9999)).compareTo(
+            _parseDate(b['endTime']) ?? DateTime(9999)));
         final permanent = (data['permanent'] as List?)?.cast<Map<String, dynamic>>() ?? [];
-        final ended = (data['ended'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+        final List<Map<String, dynamic>> ended = [
+          ...((data['ended'] as List?)?.cast<Map<String, dynamic>>() ?? []),
+          ...((data['current'] as List?)?.cast<Map<String, dynamic>>() ?? []).where((b) {
+            final end = _parseDate(b['endTime']);
+            return end != null && !now.isBefore(end);
+          }),
+        ];
 
         List<Map<String, dynamic>> activeList;
         if (_subFilter == 0) {
@@ -249,15 +269,21 @@ class _BannersViewState extends State<_BannersView> {
             ),
 
             // Lista de banners
-            Expanded(
-              child: activeList.isEmpty
-                  ? const Center(child: _EmptyNote('No hay banners en esta categoría.'))
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: activeList.length,
-                      itemBuilder: (context, i) => _buildBannerCard(context, activeList[i], isCurrent: _subFilter == 0),
-                    ),
-            ),
+            Expanded(child: RefreshIndicator(
+              onRefresh: () async {
+                final next = Api.get('banners', refresh: true);
+                setState(() => _bannersFuture = next);
+                try { await next; } catch (_) {}
+              },
+              child: ListView.builder(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(16),
+                itemCount: activeList.isEmpty ? 1 : activeList.length,
+                itemBuilder: (context, i) => activeList.isEmpty
+                    ? const SizedBox(height: 220, child: Center(child: _EmptyNote('No hay banners en esta categoría.')))
+                    : _buildBannerCard(context, activeList[i], isCurrent: _subFilter == 0),
+              ),
+            )),
           ],
         );
       },
@@ -756,24 +782,35 @@ class _EventsViewState extends State<_EventsView> {
                   if (rewards.isNotEmpty) ...[
                     const SizedBox(height: 8),
                     const Text(
-                      'RECOMPENSAS CLAVE:',
+                      'RECOMPENSAS:',
                       style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 0.8, color: kTextMuted),
                     ),
                     const SizedBox(height: 6),
                     Wrap(
                       spacing: 6,
                       runSpacing: 4,
-                      children: rewards.take(4).map((rw) {
+                      children: rewards.map((rw) {
                         return Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                           decoration: BoxDecoration(
                             color: const Color(0xff1d1b18),
                             border: Border.all(color: kBorderColor),
                           ),
-                          child: Text(
-                            rw['name']?.toString() ?? '',
-                            style: const TextStyle(fontSize: 10, color: Color(0xffd9d6d0)),
-                          ),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            if (_string(rw['icon']).isNotEmpty)
+                              _Thumb(_string(rw['icon']), size: 28, alt: ['item_${rw['id']}.png'])
+                            else
+                              _itemThumb(rw['itemId'] ?? rw['id'], size: 28),
+                            const SizedBox(width: 5),
+                            ConstrainedBox(constraints: const BoxConstraints(maxWidth: 118), child: Text(
+                              _string(rw['name']), maxLines: 2, overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 10, color: Color(0xffd9d6d0)),
+                            )),
+                            if (rw['quantity'] != null) ...[
+                              const SizedBox(width: 4),
+                              Text('×${_formatNumber(_string(rw['quantity']))}', style: const TextStyle(fontSize: 9, color: kTextMuted)),
+                            ],
+                          ]),
                         );
                       }).toList(),
                     ),

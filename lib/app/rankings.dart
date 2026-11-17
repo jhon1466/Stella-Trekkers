@@ -46,7 +46,7 @@ class RankingListPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: _subAppBar(kind == RankingKind.scoreBoss ? 'Ranking de Boss Blitz' : 'Ranking de Joint Drill'),
+    appBar: _subAppBar(kind == RankingKind.scoreBoss ? 'Blitz Ranking' : 'Raids Ranking'),
     body: _RankingBody(kind: kind),
   );
 }
@@ -304,6 +304,7 @@ class _RankingBodyState extends State<_RankingBody> {
     final chars = _asList(t['chars']).map(_asMap).toList();
     final discs = _asList(t['discs']).map(_asMap).toList();
     final notes = _asList(t['notes']).map(_asMap).toList();
+    final skills = _asList(t['skills']).map(_asMap).toList();
     final score = _string(t['score']);
     final buildScore = _string(t['buildScore']);
     return Container(
@@ -349,13 +350,44 @@ class _RankingBodyState extends State<_RankingBody> {
             const Text('MELODÍAS', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: kTextMuted)),
             const SizedBox(height: 6),
             Wrap(spacing: 6, runSpacing: 6, children: [
-              for (final n in notes) _Tag('${_string(n['name']).replaceFirst('Melody of ', '')} ×${_string(n['qty'])}', color: kTextMuted),
+              for (final n in notes) Container(
+                width: 120, padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(color: kSurface, border: Border.all(color: kBorderColor)),
+                child: Row(children: [
+                  _Thumb(_string(n['icon'], 'item_${_string(n['id'])}.png'), size: 38,
+                    fallbackIcon: Icons.music_note_outlined, alt: ['item_${_string(n['id'])}.png']),
+                  const SizedBox(width: 6),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(_string(n['name']).replaceFirst('Melody of ', ''), maxLines: 2, overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w600)),
+                    Text('×${_string(n['qty'])}', style: const TextStyle(fontSize: 9, color: kTextMuted)),
+                  ])),
+                ]),
+              ),
             ]),
+          ],
+          if (skills.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            const Text('HABILIDADES', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, letterSpacing: 1.3, color: kTextMuted)),
+            const SizedBox(height: 6),
+            for (final skill in skills) _rankingSkill(skill),
           ],
         ],
       ),
     );
   }
+}
+
+Widget _rankingSkill(Map<String, dynamic> skill) {
+  final id = _string(skill['id']);
+  final numeric = int.tryParse(id) ?? 0;
+  final discSkillId = numeric >= 1000000 ? (210000 + numeric ~/ 1000) : numeric;
+  final icon = _string(skill['icon'], 'DiscSkill_$discSkillId.png');
+  return Padding(padding: const EdgeInsets.only(bottom: 5), child: Row(children: [
+    _Thumb(icon, size: 38, fallbackIcon: Icons.auto_awesome, alt: ['DiscSkill_4.png']),
+    const SizedBox(width: 8),
+    Expanded(child: Text(_string(skill['name'], 'Habilidad'), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600))),
+  ]));
 }
 
 String _formatNumber(String raw) {
