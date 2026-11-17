@@ -441,7 +441,7 @@ class _CommunityBuildsPageState extends State<CommunityBuildsPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: _subAppBar('Community Builds'),
+    appBar: _subAppBar('Builds de la comunidad'),
     body: _Loader<List<dynamic>>(
       load: (r) => Future.wait([Api.site('builds', refresh: r), Api.get('characters'), Api.get('discs')]),
       builder: (context, data, refresh) {
@@ -522,6 +522,11 @@ class _CommunityBuildsPageState extends State<CommunityBuildsPage> {
           ]),
           const SizedBox(height: 8),
           Row(children: [
+            const Icon(Icons.bolt, size: 13, color: kAccentAmber),
+            const SizedBox(width: 3),
+            Text('${_formatNumber(_estimatedBuildBp(trekkers.length).toString())} BP estimado',
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: kAccentAmber)),
+            const SizedBox(width: 10),
             const Icon(Icons.visibility_outlined, size: 13, color: kTextMuted),
             const SizedBox(width: 3),
             Text(_string(b['viewCount'], '0'), style: const TextStyle(fontSize: 11, color: kTextMuted)),
@@ -552,6 +557,7 @@ class _CommunityBuildsPageState extends State<CommunityBuildsPage> {
             if (slots['support1'] != null) ('APOYO 1', _asMap(slots['support1'])),
             if (slots['support2'] != null) ('APOYO 2', _asMap(slots['support2'])),
           ];
+          final estimatedBp = _estimatedBuildBp(slotEntries.length);
           final detailFutures = <String, Future<dynamic>>{};
           for (final entry in slotEntries) {
             final trekkerId = _string(entry.$2['trekkerId']);
@@ -609,6 +615,24 @@ class _CommunityBuildsPageState extends State<CommunityBuildsPage> {
           return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Text(_string(b['name']).toUpperCase(), style: kDisplay(24)),
             const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(10),
+              margin: const EdgeInsets.only(bottom: 10),
+              decoration: const BoxDecoration(
+                color: Color(0xff1d1b18),
+                border: Border(bottom: BorderSide(color: kBorderColor)),
+              ),
+              child: Row(children: [
+                const Icon(Icons.bolt, color: kAccentAmber, size: 20),
+                const SizedBox(width: 8),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('PODER DE COMBATE ESTIMADO',
+                      style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 0.8, color: kTextMuted)),
+                  Text('${_formatNumber(estimatedBp.toString())} BP',
+                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: kAccentAmber)),
+                ])),
+              ]),
+            ),
             for (final entry in slotEntries)
               FutureBuilder<dynamic>(
                 future: detailFutures[_string(entry.$2['trekkerId'])],

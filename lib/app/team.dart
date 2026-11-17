@@ -1,5 +1,8 @@
 part of '../main.dart';
 
+int _estimatedBuildBp(int trekkerCount) =>
+    trekkerCount * 7850 + (trekkerCount == 3 ? 3200 : 0);
+
 // ─────────────────────────────────────────────────────────────
 // CREADOR DE EQUIPOS, SIMULADOR DE RESONANCIA Y BUILDS META
 // ─────────────────────────────────────────────────────────────
@@ -338,7 +341,7 @@ class _TeamBuilderPageState extends State<TeamBuilderPage> {
                             style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, letterSpacing: 0.8, color: kTextMuted),
                           ),
                           Text(
-                            '${_formatNumber((activeCount * 7850 + (activeCount == 3 ? 3200 : 0)).toString())} BP',
+                            '${_formatNumber(_estimatedBuildBp(activeCount).toString())} BP',
                             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: kTextPrimary),
                           ),
                         ],
